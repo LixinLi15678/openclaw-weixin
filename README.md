@@ -200,3 +200,39 @@ Bug reports, documentation improvements, tests, and code contributions are welco
 ## License
 
 [MIT](./LICENSE)
+
+### Optional scoped outgoing suffix
+
+Compatible hosts can expose the optional `outbound-text-suffix-v1` runtime
+capability and `messages.outboundTextSuffix` configuration. This plugin adopts V1
+only when the host advertises it and supplies its V1 per-call helper. The existing
+peer range and old-host sending behavior remain supported.
+
+A matched admitted agent plus exact resolved account/direct peer receives one
+canonical literal suffix on each physical TEXT request, including captions before
+media. Weixin peer IDs are case-sensitive. Existing path-specific Markdown filters
+and hooks run before source-aware planning; the host-prepared matched adapter path
+skips its duplicate mutable hook. Code data and body moons are preserved, formatting
+is closed before the signature, and complete requests fit the local 4000 UTF-16
+unit limit (or a smaller captured limit). This is a local limit, not a verified
+provider hard ceiling. An oversized indivisible link/table/reference document or
+unrepresentable code/grapheme fails planning before provider dispatch. The planner
+never truncates or emits an overflow-only signature.
+
+Other agents/recipients, disabled or unavailable capability, binary items, filenames,
+URLs and structured tool progress/results retain their existing behavior. Accepted
+caption/chunk results are retained before observers; later failures carry the
+standard partial-delivery receipt without automatic replay.
+
+Offline integration proof uses the real host planner against synthetic routes and
+fake provider requests. From this checkout, point `OPENCLAW_SUFFIX_HOST_ROOT` at an
+isolated compatible host source checkout with dependencies installed, then run:
+
+```sh
+OPENCLAW_SUFFIX_HOST_ROOT=/path/to/isolated/openclaw npm run test:unit -- src/messaging/text-suffix.boundary.test.ts
+```
+
+The fixture loads only source modules from that explicit checkout, never active
+configuration or channel credentials. Its source aliases are test-only. Ordinary
+old-SDK builds do not import new V1 SDK types or values; the host/plugin release
+versions are assigned separately by their release owners.

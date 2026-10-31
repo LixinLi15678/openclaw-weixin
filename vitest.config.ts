@@ -1,6 +1,24 @@
 import { defineConfig } from "vitest/config";
 
+const suffixHostRoot = process.env.OPENCLAW_SUFFIX_HOST_ROOT;
+
 export default defineConfig({
+  ...(suffixHostRoot
+    ? {
+        resolve: {
+          alias: [
+            {
+              find: /^@openclaw\/normalization-core\/(.+)$/u,
+              replacement: `${suffixHostRoot}/packages/normalization-core/src/$1.ts`,
+            },
+            {
+              find: "@openclaw/normalization-core",
+              replacement: `${suffixHostRoot}/packages/normalization-core/src/index.ts`,
+            },
+          ],
+        },
+      }
+    : {}),
   test: {
     globals: true,
     coverage: {

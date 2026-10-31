@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import type { PluginRuntime } from "openclaw/plugin-sdk/core";
+import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
 
 import { sendTyping } from "../api/api.js";
 import type { WeixinMessage } from "../api/types.js";
@@ -29,6 +30,12 @@ import {
 import type { WeixinInboundMediaOpts } from "./inbound.js";
 import { sendWeixinMediaFile } from "./send-media.js";
 import { StreamingMarkdownFilter } from "./markdown-filter.js";
+import {
+  bindWeixinTextSuffix,
+  prepareWeixinText,
+  suffixCapability,
+  type WeixinReplyDeliveryAuthority,
+} from "./text-suffix.js";
 import { sendMessageWeixin } from "./send.js";
 import { WeixinReplyProgressSender } from "./reply-progress-sender.js";
 import { withPublishedModelRuntime } from "./dispatch-options.js";
@@ -47,6 +54,8 @@ export type ProcessMessageDeps = {
   accountId: string;
   config: import("openclaw/plugin-sdk/core").OpenClawConfig;
   channelRuntime: PluginRuntime["channel"];
+  suffixHostReady?: boolean;
+  signal?: AbortSignal;
   baseUrl: string;
   cdnBaseUrl: string;
   token?: string;
@@ -293,6 +302,38 @@ export async function processOneMessage(
     setContextToken(deps.accountId, full.from_user_id ?? "", contextToken);
   }
   const runId = randomUUID();
+  const suffixRuntime = suffixCapability(deps.channelRuntime, deps.suffixHostReady === true);
+  const textPreparation = suffixRuntime
+    ? {
+        suffix: suffixRuntime.capture(deps.config, { kind: "agent", agentId: route.agentId }),
+        modifiersPrepared: false,
+        visibility: "visible" as const,
+      }
+    : undefined;
+  const textOptions =
+    suffixRuntime && textPreparation
+      ? {
+          textPreparation,
+          outboundTextSuffix: suffixRuntime,
+          formatting: {
+            textLimit: Math.min(
+              4_000,
+              deps.channelRuntime.text.resolveTextChunkLimit(
+                deps.config,
+                "openclaw-weixin",
+                deps.accountId,
+                { fallbackLimit: 4_000 },
+              ),
+            ),
+            chunkMode: deps.channelRuntime.text.resolveChunkMode(
+              deps.config,
+              "openclaw-weixin",
+              deps.accountId,
+            ),
+          },
+        }
+      : {};
+  const matchedSuffix = bindWeixinTextSuffix(textOptions, ctx.To, deps.accountId);
   const replyProgressSender = resolveReplyProgressMessagesEnabled(deps.config)
     ? new WeixinReplyProgressSender({
         runId,
@@ -348,7 +389,8 @@ export async function processOneMessage(
     deps.channelRuntime.reply.createReplyDispatcherWithTyping({
       humanDelay,
       typingCallbacks,
-      deliver: async (payload) => {
+      deliver: async (payload, info) => {
+        const authority: WeixinReplyDeliveryAuthority = info ?? {};
         const rawText = payload.text ?? "";
         let text = (() => {
           const f = new StreamingMarkdownFilter();
@@ -381,6 +423,22 @@ export async function processOneMessage(
           return;
         }
         text = sendingResult.text;
+        const preparedText = await prepareWeixinText({
+          ...textOptions,
+          to: ctx.To,
+          text,
+          accountId: deps.accountId,
+        });
+        const sendTextOptions = preparedText
+          ? {
+              ...textOptions,
+              preparedText,
+              onPlatformSendDispatch: authority.onPlatformSendDispatch,
+              assertDirectAdapterHandoff: authority.assertPlatformSendAuthorized,
+            }
+          : textOptions;
+        deps.signal?.throwIfAborted();
+        if (preparedText) authority.assertPlatformSendAuthorized?.();
 
         try {
           if (mediaUrl) {
@@ -407,6 +465,8 @@ export async function processOneMessage(
                 to: ctx.To,
                 text,
                 opts: {
+                  ...sendTextOptions,
+                  signal: deps.signal,
                   baseUrl: deps.baseUrl,
                   token: deps.token,
                   contextToken,
@@ -429,6 +489,8 @@ export async function processOneMessage(
               to: ctx.To,
               text,
               opts: {
+                ...sendTextOptions,
+                signal: deps.signal,
                 baseUrl: deps.baseUrl,
                 token: deps.token,
                 contextToken,
@@ -451,6 +513,8 @@ export async function processOneMessage(
               to: ctx.To,
               text,
               opts: {
+                ...sendTextOptions,
+                signal: deps.signal,
                 baseUrl: deps.baseUrl,
                 token: deps.token,
                 contextToken,
@@ -484,6 +548,10 @@ export async function processOneMessage(
       },
       onError: (err, info) => {
         deps.errLog(`weixin reply ${info.kind}: ${String(err)}`);
+        if (matchedSuffix && extractErrorCode(err) === "OPENCLAW_PLATFORM_MESSAGE_NOT_DISPATCHED") {
+          return;
+        }
+        const authority: WeixinReplyDeliveryAuthority = info;
         const errMsg = err instanceof Error ? err.message : String(err);
         let notice: string;
         if (errMsg.includes("remote media download failed") || errMsg.includes("fetch")) {
@@ -501,6 +569,14 @@ export async function processOneMessage(
           to: ctx.To,
           contextToken,
           message: notice,
+          ...textOptions,
+          ...(matchedSuffix
+            ? {
+                onPlatformSendDispatch: authority.onPlatformSendDispatch,
+                assertDirectAdapterHandoff: authority.assertPlatformSendAuthorized,
+              }
+            : {}),
+          signal: deps.signal,
           baseUrl: deps.baseUrl,
           token: deps.token,
           runId,
@@ -579,6 +655,8 @@ export async function processOneMessage(
           to: ctx.To,
           text: timingText,
           opts: {
+            ...textOptions,
+            signal: deps.signal,
             baseUrl: deps.baseUrl,
             token: deps.token,
             contextToken,

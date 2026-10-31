@@ -29,6 +29,7 @@ export type MonitorWeixinOpts = {
    * Required for inbound message processing; provided by `ChannelGatewayContext.channelRuntime`.
    */
   channelRuntime: PluginRuntime["channel"];
+  suffixHostReady?: boolean;
   abortSignal?: AbortSignal;
   longPollTimeoutMs?: number;
   /** Gateway status callback — called on each successful poll and inbound message. */
@@ -173,6 +174,8 @@ export async function monitorWeixinProvider(opts: MonitorWeixinOpts): Promise<vo
           accountId,
           config,
           channelRuntime,
+          suffixHostReady: opts.suffixHostReady,
+          signal: abortSignal,
           baseUrl,
           cdnBaseUrl,
           token,
