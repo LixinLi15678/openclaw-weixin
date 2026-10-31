@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 vi.mock("../util/logger.js", () => ({
   logger: {
@@ -37,6 +37,11 @@ import {
 } from "./send.js";
 import { MessageItemType } from "../api/types.js";
 import type { UploadedFileInfo } from "../cdn/upload.js";
+
+// Load the real SDK dependency before per-test timing and API mock sequencing begin.
+beforeAll(async () => {
+  await import("./send-receipts.js");
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

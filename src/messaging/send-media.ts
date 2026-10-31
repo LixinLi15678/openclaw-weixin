@@ -1,5 +1,7 @@
 import path from "node:path";
 import type { WeixinApiOptions } from "../api/api.js";
+import { prepareWeixinText } from "./text-suffix.js";
+import type { WeixinMessageSendOptions, WeixinSendResult } from "./send.js";
 import { logger } from "../util/logger.js";
 import { getMimeFromFilename } from "../media/mime.js";
 import { sendFileMessageWeixin, sendImageMessageWeixin, sendVideoMessageWeixin } from "./send.js";
@@ -22,10 +24,16 @@ export async function sendWeixinMediaFile(params: {
   filePath: string;
   to: string;
   text: string;
-  opts: WeixinApiOptions & { contextToken?: string; runId?: string; accountId?: string };
+  opts: WeixinMessageSendOptions;
   cdnBaseUrl: string;
-}): Promise<{ messageId: string }> {
-  const { filePath, to, text, opts, cdnBaseUrl } = params;
+}): Promise<WeixinSendResult> {
+  const { filePath, to, text, cdnBaseUrl } = params;
+  const preparedText =
+    params.opts.preparedText ??
+    (await prepareWeixinText({ ...params.opts, to, text, accountId: params.opts.accountId }));
+  const opts = preparedText ? { ...params.opts, preparedText } : params.opts;
+  opts.signal?.throwIfAborted();
+  opts.assertDirectAdapterHandoff?.();
   const mime = getMimeFromFilename(filePath);
   const uploadOpts: WeixinApiOptions = { baseUrl: opts.baseUrl, token: opts.token };
 

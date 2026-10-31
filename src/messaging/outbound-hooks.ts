@@ -64,25 +64,30 @@ export function emitWeixinMessageSent(params: {
   accountId?: string;
   runId?: string;
 }): void {
-  const hookRunner = getGlobalHookRunner();
-  if (!hookRunner?.hasHooks("message_sent")) return;
-  const canonical = buildCanonicalSentMessageHookContext({
-    to: params.to,
-    content: params.content,
-    success: params.success,
-    error: params.error,
-    channelId: CHANNEL_ID,
-    accountId: params.accountId,
-    conversationId: params.to,
-    runId: params.runId,
-  });
-  fireAndForgetHook(
-    Promise.resolve(
-      hookRunner!.runMessageSent(
-        toPluginMessageSentEvent(canonical),
-        toPluginMessageContext(canonical),
+  try {
+    const hookRunner = getGlobalHookRunner();
+    if (!hookRunner?.hasHooks("message_sent")) return;
+    const canonical = buildCanonicalSentMessageHookContext({
+      to: params.to,
+      content: params.content,
+      success: params.success,
+      error: params.error,
+      channelId: CHANNEL_ID,
+      accountId: params.accountId,
+      conversationId: params.to,
+      runId: params.runId,
+    });
+    fireAndForgetHook(
+      Promise.resolve(
+        hookRunner!.runMessageSent(
+          toPluginMessageSentEvent(canonical),
+          toPluginMessageContext(canonical),
+        ),
       ),
-    ),
-    "weixin: message_sent plugin hook failed",
-  );
+      "weixin: message_sent plugin hook failed",
+    );
+  } catch {
+    // Observation cannot invalidate an already accepted physical delivery.
+    logger.warn("message_sent: observer_unavailable");
+  }
 }
